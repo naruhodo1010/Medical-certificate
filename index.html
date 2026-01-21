@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Digital Medical Certificate System</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -94,14 +94,20 @@
           };
 
           const issueCertificate = async (formData) => {
+            const profile = doctorProfile || (await loadDoctorProfile());
+            if (!profile) {
+              alert('Please save your doctor profile first.');
+              setView('home');
+              return;
+            }
             const certId = generateId();
             const certificate = {
               id: certId,
               ...formData,
               issuedDate: new Date().toISOString(),
-              issuedBy: doctorProfile.doctorName,
-              clinicName: doctorProfile.clinicName,
-              licenseNo: doctorProfile.licenseNo,
+              issuedBy: profile.doctorName,
+              clinicName: profile.clinicName,
+              licenseNo: profile.licenseNo,
               status: 'valid'
             };
             
@@ -166,9 +172,10 @@
 
           return (
             <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-              <div className="max-w-md mx-auto">
+              <div className="max-w-2xl mx-auto p-4">
                 <Header isAuthenticated={isAuthenticated} doctorProfile={doctorProfile} onLogout={handleLogout} />
 
+                <div className="mt-6">
                 {!isAuthenticated && view === 'home' ? (
                   <DoctorLogin onLogin={saveDoctorProfile} />
                 ) : (
@@ -182,16 +189,208 @@
                     {view === 'verification' && <VerificationResult result={verificationResult} onBack={() => setView('home')} />}
                   </>
                 )}
+                </div>
               </div>
             </div>
           );
         };
 
-        // --- other components (Header, DoctorLogin, HomeView, IssueForm, IssuedCertificate, VerifyForm, VerificationResult) ---
-        // (kept unchanged from original file)
+        /* ---------- Components ---------- */
 
-        // For brevity we keep the rest of components as in the original file; they will be restored from the previous commit content.
+        const Header = ({ isAuthenticated, doctorProfile, onLogout }) => {
+          return (
+            <div className="flex items-center justify-between bg-white shadow rounded p-4">
+              <div>
+                <h1 className="text-xl font-semibold text-gray-800">Digital Medical Certificate</h1>
+                <p className="text-sm text-gray-500">Issue and verify certificates</p>
+              </div>
+              <div className="text-right">
+                {isAuthenticated && doctorProfile ? (
+                  <>
+                    <div className="text-sm text-gray-700">{doctorProfile.doctorName}</div>
+                    <div className="mt-2">
+                      <button className="px-3 py-1 bg-red-500 text-white rounded" onClick={onLogout}>Logout</button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-gray-500">Not signed in</div>
+                )}
+              </div>
+            </div>
+          );
+        };
 
+        const DoctorLogin = ({ onLogin }) => {
+          const [doctorName, setDoctorName] = useState('');
+          const [clinicName, setClinicName] = useState('');
+          const [licenseNo, setLicenseNo] = useState('');
+
+          const handleSave = () => {
+            if (!doctorName.trim()) {
+              alert('Please enter doctor name');
+              return;
+            }
+            onLogin({ doctorName, clinicName, licenseNo });
+          };
+
+          return (
+            <div className="bg-white p-6 rounded shadow">
+              <h2 className="text-lg font-medium mb-4">Doctor Profile</h2>
+              <div className="space-y-3">
+                <input className="w-full border rounded px-3 py-2" placeholder="Doctor name" value={doctorName} onChange={e => setDoctorName(e.target.value)} />
+                <input className="w-full border rounded px-3 py-2" placeholder="Clinic name" value={clinicName} onChange={e => setClinicName(e.target.value)} />
+                <input className="w-full border rounded px-3 py-2" placeholder="License number" value={licenseNo} onChange={e => setLicenseNo(e.target.value)} />
+                <div className="flex justify-end">
+                  <button className="px-4 py-2 bg-blue-600 text-white rounded" onClick={handleSave}>Save</button>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        const HomeView = ({ onNavigate }) => {
+          return (
+            <div className="bg-white p-6 rounded shadow space-y-4">
+              <h2 className="text-lg font-medium">Home</h2>
+              <div className="space-y-2">
+                <button className="w-full text-left px-4 py-3 bg-indigo-600 text-white rounded" onClick={() => onNavigate('issue')}>Issue New Certificate</button>
+                <button className="w-full text-left px-4 py-3 bg-green-600 text-white rounded" onClick={() => onNavigate('verify')}>Verify a Certificate</button>
+              </div>
+            </div>
+          );
+        };
+
+        const IssueForm = ({ onSubmit, onBack }) => {
+          const [patientName, setPatientName] = useState('');
+          const [patientId, setPatientId] = useState('');
+          const [diagnosis, setDiagnosis] = useState('');
+          const [notes, setNotes] = useState('');
+          const [daysOff, setDaysOff] = useState(0);
+
+          const handleSubmit = () => {
+            if (!patientName.trim()) {
+              alert('Enter patient name');
+              return;
+            }
+            onSubmit({ patientName, patientId, diagnosis, notes, daysOff });
+          };
+
+          return (
+            <div className="bg-white p-6 rounded shadow">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-medium">Issue Certificate</h2>
+                <button className="text-sm text-gray-500" onClick={onBack}>Back</button>
+              </div>
+
+              <div className="space-y-3">
+                <input className="w-full border rounded px-3 py-2" placeholder="Patient name" value={patientName} onChange={e => setPatientName(e.target.value)} />
+                <input className="w-full border rounded px-3 py-2" placeholder="Patient ID (optional)" value={patientId} onChange={e => setPatientId(e.target.value)} />
+                <input className="w-full border rounded px-3 py-2" placeholder="Diagnosis" value={diagnosis} onChange={e => setDiagnosis(e.target.value)} />
+                <input className="w-full border rounded px-3 py-2" type="number" placeholder="Days off" value={daysOff} onChange={e => setDaysOff(parseInt(e.target.value || 0))} />
+                <textarea className="w-full border rounded px-3 py-2" rows="4" placeholder="Notes" value={notes} onChange={e => setNotes(e.target.value)}></textarea>
+
+                <div className="flex justify-between">
+                  <button className="px-4 py-2 bg-gray-200 rounded" onClick={onBack}>Cancel</button>
+                  <button className="px-4 py-2 bg-blue-600 text-white rounded" onClick={handleSubmit}>Issue</button>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        const IssuedCertificate = ({ cert, verificationUrl, onBack }) => {
+          const handlePrint = () => {
+            window.print();
+          };
+
+          const copyUrl = async () => {
+            try {
+              await navigator.clipboard.writeText(verificationUrl);
+              alert('Verification URL copied to clipboard');
+            } catch (e) {
+              alert('Copy failed — please copy manually:\n' + verificationUrl);
+            }
+          };
+
+          return (
+            <div className="bg-white p-6 rounded shadow print-area">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-medium">Certificate Issued</h2>
+                <button className="text-sm text-gray-500" onClick={onBack}>Close</button>
+              </div>
+
+              <div className="border rounded p-4 bg-gray-50">
+                <div className="text-sm text-gray-600">Certificate ID: <strong>{cert.id}</strong></div>
+                <div className="mt-2"><strong>Patient:</strong> {cert.patientName} {cert.patientId ? `(${cert.patientId})` : ''}</div>
+                <div className="mt-1"><strong>Diagnosis:</strong> {cert.diagnosis}</div>
+                <div className="mt-1"><strong>Days off:</strong> {cert.daysOff}</div>
+                <div className="mt-2"><strong>Issued by:</strong> {cert.issuedBy} — {cert.clinicName} (License: {cert.licenseNo})</div>
+                <div className="mt-1 text-sm text-gray-500">Issued at: {new Date(cert.issuedDate).toLocaleString()}</div>
+                <div className="mt-3"><strong>Notes:</strong><div className="mt-1 whitespace-pre-wrap">{cert.notes}</div></div>
+              </div>
+
+              <div className="mt-4 flex space-x-2 no-print">
+                <button className="px-4 py-2 bg-blue-600 text-white rounded" onClick={handlePrint}>Print</button>
+                <button className="px-4 py-2 bg-green-600 text-white rounded" onClick={copyUrl}>Copy Verification Link</button>
+              </div>
+            </div>
+          );
+        };
+
+        const VerifyForm = ({ onVerify, onBack }) => {
+          const [certId, setCertId] = useState('');
+
+          const submit = () => {
+            if (!certId.trim()) {
+              alert('Enter certificate ID');
+              return;
+            }
+            onVerify(certId.trim());
+          };
+
+          return (
+            <div className="bg-white p-6 rounded shadow">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-medium">Verify Certificate</h2>
+                <button className="text-sm text-gray-500" onClick={onBack}>Back</button>
+              </div>
+              <div className="space-y-3">
+                <input className="w-full border rounded px-3 py-2" placeholder="Certificate ID (e.g. MC...)" value={certId} onChange={e => setCertId(e.target.value)} />
+                <div className="flex justify-end">
+                  <button className="px-4 py-2 bg-indigo-600 text-white rounded" onClick={submit}>Verify</button>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        const VerificationResult = ({ result, onBack }) => {
+          return (
+            <div className="bg-white p-6 rounded shadow">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-medium">Verification Result</h2>
+                <button className="text-sm text-gray-500" onClick={onBack}>Back</button>
+              </div>
+
+              {result ? (
+                <div className="border rounded p-4 bg-gray-50">
+                  <div className="text-sm text-gray-600">Certificate ID: <strong>{result.id}</strong></div>
+                  <div className="mt-2"><strong>Patient:</strong> {result.patientName} {result.patientId ? `(${result.patientId})` : ''}</div>
+                  <div className="mt-1"><strong>Diagnosis:</strong> {result.diagnosis}</div>
+                  <div className="mt-1"><strong>Days off:</strong> {result.daysOff}</div>
+                  <div className="mt-2"><strong>Issued by:</strong> {result.issuedBy} — {result.clinicName} (License: {result.licenseNo})</div>
+                  <div className="mt-1 text-sm text-gray-500">Issued at: {new Date(result.issuedDate).toLocaleString()}</div>
+                  <div className="mt-3"><strong>Notes:</strong><div className="mt-1 whitespace-pre-wrap">{result.notes}</div></div>
+                  <div className="mt-3 text-green-700 font-semibold">Status: {result.status}</div>
+                </div>
+              ) : (
+                <div className="text-center text-gray-600 p-6">
+                  <p className="mb-3">Certificate not found or invalid ID.</p>
+                </div>
+              )}
+            </div>
+          );
+        };
     </script>
 
     <!-- Storage fallback for environments where `window.storage` is not provided and mount -->
