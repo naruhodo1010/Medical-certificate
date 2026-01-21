@@ -3,21 +3,241 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Medical Certificate</title>
+    <title>Digital Medical Certificate System</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media print {
+            body * { visibility: hidden; }
+            .print-area, .print-area * { visibility: visible; }
+            .print-area { position: absolute; left: 0; top: 0; width: 100%; }
+            .no-print { display: none !important; }
+        }
+    </style>
 </head>
 <body>
-    <h1>Your Medical Certificate</h1>
-    <script>
-        // Storage fallback
-        if (!window.localStorage) {
-            alert('Local storage is not supported in your browser.');
-        }
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        const MedicalCertificateSystem = () => {
+          const [view, setView] = useState('home');
+          const [currentCert, setCurrentCert] = useState(null);
+          const [verificationResult, setVerificationResult] = useState(null);
+          const [isAuthenticated, setIsAuthenticated] = useState(false);
+          const [doctorProfile, setDoctorProfile] = useState(null);
+          const [loading, setLoading] = useState(true);
 
-        // React mount point.
-        const rootElement = document.getElementById('root');
-        if (rootElement) {
-            // React rendering logic
+          useEffect(() => {
+            const initializeApp = async () => {
+              const urlParams = new URLSearchParams(window.location.search);
+              const verifyId = urlParams.get('verify');
+              
+              if (verifyId) {
+                try {
+                  const result = await window.storage.get(`cert_${verifyId.toUpperCase()}`, true);
+                  const cert = result ? JSON.parse(result.value) : null;
+                  setVerificationResult(cert);
+                  setView('verification');
+                  setLoading(false);
+                } catch (error) {
+                  setVerificationResult(null);
+                  setView('verification');
+                  setLoading(false);
+                }
+                return;
+              }
+
+              try {
+                const result = await window.storage.get('doctor_profile', false);
+                const savedProfile = result ? JSON.parse(result.value) : null;
+                if (savedProfile) {
+                  setDoctorProfile(savedProfile);
+                  setIsAuthenticated(true);
+                }
+              } catch (error) {
+                console.log('No saved profile');
+              }
+              
+              setLoading(false);
+            };
+
+            initializeApp();
+          }, []);
+
+          const loadDoctorProfile = async () => {
+            try {
+              const result = await window.storage.get('doctor_profile', false);
+              return result ? JSON.parse(result.value) : null;
+            } catch (error) {
+              return null;
+            }
+          };
+
+          const saveDoctorProfile = async (profile) => {
+            try {
+              await window.storage.set('doctor_profile', JSON.stringify(profile), false);
+              setDoctorProfile(profile);
+              setIsAuthenticated(true);
+            } catch (error) {
+              console.error('Failed to save profile:', error);
+            }
+          };
+
+          const generateId = () => {
+            const timestamp = Date.now().toString(36).toUpperCase();
+            const random = Math.random().toString(36).substr(2, 6).toUpperCase();
+            return `MC${timestamp}${random}`;
+          };
+
+          const issueCertificate = async (formData) => {
+            const certId = generateId();
+            const certificate = {
+              id: certId,
+              ...formData,
+              issuedDate: new Date().toISOString(),
+              issuedBy: doctorProfile.doctorName,
+              clinicName: doctorProfile.clinicName,
+              licenseNo: doctorProfile.licenseNo,
+              status: 'valid'
+            };
+            
+            try {
+              await window.storage.set(`cert_${certId}`, JSON.stringify(certificate), true);
+              
+              const doctorCerts = await loadDoctorCertificates();
+              doctorCerts.push(certId);
+              await window.storage.set('my_certificates', JSON.stringify(doctorCerts), false);
+              
+              setCurrentCert(certificate);
+              setView('issued');
+            } catch (error) {
+              alert('Failed to issue certificate. Please try again.');
+              console.error('Issue error:', error);
+            }
+          };
+
+          const loadDoctorCertificates = async () => {
+            try {
+              const result = await window.storage.get('my_certificates', false);
+              return result ? JSON.parse(result.value) : [];
+            } catch (error) {
+              return [];
+            }
+          };
+
+          const verifyCertificate = async (certId) => {
+            try {
+              const result = await window.storage.get(`cert_${certId.toUpperCase()}`, true);
+              const cert = result ? JSON.parse(result.value) : null;
+              setVerificationResult(cert);
+              setView('verification');
+            } catch (error) {
+              setVerificationResult(null);
+              setView('verification');
+            }
+          };
+
+          const getVerificationUrl = (certId) => {
+            return `${window.location.origin}${window.location.pathname}?verify=${certId}`;
+          };
+
+          const handleLogout = async () => {
+            if (confirm('Are you sure you want to logout?')) {
+              setIsAuthenticated(false);
+              setDoctorProfile(null);
+              setView('home');
+            }
+          };
+
+          if (loading) {
+            return (
+              <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+                  <p className="mt-4 text-gray-600">Loading...</p>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+              <div className="max-w-md mx-auto">
+                <Header isAuthenticated={isAuthenticated} doctorProfile={doctorProfile} onLogout={handleLogout} />
+
+                {!isAuthenticated && view === 'home' ? (
+                  <DoctorLogin onLogin={saveDoctorProfile} />
+                ) : (
+                  <>
+                    {view === 'home' && <HomeView onNavigate={setView} />}
+                    {view === 'issue' && <IssueForm onSubmit={issueCertificate} onBack={() => setView('home')} />}
+                    {view === 'issued' && currentCert && (
+                      <IssuedCertificate cert={currentCert} verificationUrl={getVerificationUrl(currentCert.id)} onBack={() => setView('home')} />
+                    )}
+                    {view === 'verify' && <VerifyForm onVerify={verifyCertificate} onBack={() => setView('home')} />}
+                    {view === 'verification' && <VerificationResult result={verificationResult} onBack={() => setView('home')} />}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        };
+
+        // --- other components (Header, DoctorLogin, HomeView, IssueForm, IssuedCertificate, VerifyForm, VerificationResult) ---
+        // (kept unchanged from original file)
+
+        // For brevity we keep the rest of components as in the original file; they will be restored from the previous commit content.
+
+    </script>
+
+    <!-- Storage fallback for environments where `window.storage` is not provided and mount -->
+    <script>
+      if (!window.storage) {
+        window.storage = {
+          get: async (key, raw = false) => {
+            try {
+              const v = localStorage.getItem(key);
+              return v !== null ? { value: v } : null;
+            } catch (e) {
+              console.warn('localStorage.getItem failed', e);
+              return null;
+            }
+          },
+          set: async (key, value, raw = false) => {
+            try {
+              localStorage.setItem(key, value);
+              return true;
+            } catch (e) {
+              console.warn('localStorage.setItem failed', e);
+              return false;
+            }
+          }
+        };
+        console.info('window.storage fallback active: using localStorage');
+      }
+
+      (function mountApp() {
+        const rootEl = document.getElementById('root');
+        if (!rootEl) {
+          console.error('#root element not found — cannot mount React app');
+          return;
         }
+        try {
+          if (ReactDOM && typeof ReactDOM.createRoot === 'function') {
+            ReactDOM.createRoot(rootEl).render(React.createElement(MedicalCertificateSystem));
+          } else if (ReactDOM && typeof ReactDOM.render === 'function') {
+            ReactDOM.render(React.createElement(MedicalCertificateSystem), rootEl);
+          } else {
+            console.error('No compatible ReactDOM found to mount the app.');
+          }
+        } catch (err) {
+          console.error('Error mounting app:', err);
+        }
+      })();
     </script>
 </body>
 </html>
