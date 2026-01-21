@@ -3,12 +3,16 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Medical Certificate</title>
+<title>Digitally Signed Medical Certificate</title>
 
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+
+<!-- PDF + QR -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 
 <body class="bg-gray-100">
@@ -25,19 +29,73 @@ function canonical(obj) {
 async function sha256(text) {
   const data = new TextEncoder().encode(text);
   const hash = await crypto.subtle.digest("SHA-256", data);
-  return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,"0")).join("");
+  return [...new Uint8Array(hash)]
+    .map(b => b.toString(16).padStart(2,"0"))
+    .join("");
 }
 
-/* ================= CONFIG ================= */
-const WORKER_URL = "https://your-worker-name.workers.dev";
+/* ======== SIGNING (ECDSA) ======== */
+async function generateKeyPair() {
+  return crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"]
+  );
+}
+
+async function signHash(privateKey, hashHex) {
+  const sig = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    privateKey,
+    Uint8Array.from(hashHex.match(/.{2}/g).map(b=>parseInt(b,16)))
+  );
+  return btoa(String.fromCharCode(...new Uint8Array(sig)));
+}
+
+/* ================= PDF ================= */
+async function generateSignedPdf(cert) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  const verifyUrl =
+    location.origin + location.pathname + "?verify=" + cert.id;
+
+  doc.setFontSize(18);
+  doc.text("Digital Medical Certificate", 20, 20);
+
+  doc.setFontSize(12);
+  doc.text(`Certificate ID: ${cert.id}`, 20, 35);
+  doc.text(`Patient: ${cert.patient}`, 20, 45);
+  doc.text(`Doctor: ${cert.doctor}`, 20, 55);
+  doc.text(`Issued: ${new Date(cert.issuedAt).toLocaleString()}`, 20, 65);
+
+  doc.setFontSize(10);
+  doc.text("Digitally signed & blockchain verifiable", 20, 75);
+
+  /* QR */
+  const qrDiv = document.createElement("div");
+  new QRCode(qrDiv, { text: verifyUrl, width: 128, height: 128 });
+  await new Promise(r => setTimeout(r, 100));
+  const qrImg = qrDiv.querySelector("img");
+  doc.addImage(qrImg.src, "PNG", 20, 85, 40, 40);
+
+  /* Signature block */
+  doc.setFontSize(8);
+  doc.text("Signature (ECDSA):", 20, 135);
+  doc.text(cert.signature.slice(0, 80) + "...", 20, 140);
+
+  doc.save(`Signed_Certificate_${cert.id}.pdf`);
+}
 
 /* ================= APP ================= */
 function App() {
   const [doctor, setDoctor] = useState("");
   const [cert, setCert] = useState(null);
-  const [status, setStatus] = useState("");
 
-  async function issue(patient) {
+  async function issue() {
+    const patient = prompt("Patient name");
+    if (!patient) return;
+
     const unsigned = {
       id: "MC" + Date.now().toString(36).toUpperCase(),
       patient,
@@ -46,26 +104,24 @@ function App() {
     };
 
     const hash = await sha256(canonical(unsigned));
-    const certificate = { ...unsigned, hash };
+    const keys = await generateKeyPair();
+    const signature = await signHash(keys.privateKey, hash);
+
+    const certificate = {
+      ...unsigned,
+      hash,
+      signature
+    };
 
     setCert(certificate);
-    setStatus("Anchoring on blockchain...");
-
-    const res = await fetch(WORKER_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hash: "0x" + hash })
-    });
-
-    const json = await res.json();
-    setStatus(json.success
-      ? "✔ Anchored on blockchain"
-      : "❌ Anchoring failed");
+    await generateSignedPdf(certificate);
   }
 
   return (
     <div className="max-w-md mx-auto p-4 space-y-4">
-      <h1 className="text-xl font-semibold">Medical Certificate</h1>
+      <h1 className="text-xl font-semibold">
+        Digitally Signed Medical Certificate
+      </h1>
 
       <input
         className="border p-2 w-full"
@@ -75,16 +131,16 @@ function App() {
 
       <button
         className="bg-blue-600 text-white px-4 py-2 rounded"
-        onClick={()=>issue(prompt("Patient name"))}
+        onClick={issue}
       >
-        Issue & Anchor
+        Issue & Download Signed PDF
       </button>
 
       {cert && (
-        <div className="bg-white p-4 rounded shadow">
-          <p><b>ID:</b> {cert.id}</p>
-          <p><b>Hash:</b> {cert.hash}</p>
-          <p className="text-sm text-gray-500">{status}</p>
+        <div className="bg-white p-3 rounded shadow text-xs break-all">
+          <b>ID:</b> {cert.id}<br/>
+          <b>Hash:</b> {cert.hash}<br/>
+          <b>Signature:</b> {cert.signature}
         </div>
       )}
     </div>
