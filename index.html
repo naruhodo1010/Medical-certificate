@@ -1,232 +1,97 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Digital Medical Certificate System</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Medical Certificate</title>
 
-  <!-- React -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-
-  <!-- Babel (for JSX) -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <!-- Tailwind -->
-  <script src="https://cdn.tailwindcss.com"></script>
-
-  <style>
-    @media print {
-      body * { visibility: hidden; }
-      .print-area, .print-area * { visibility: visible; }
-      .print-area {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-      }
-      .no-print { display: none !important; }
-    }
-  </style>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
 </head>
+
 <body class="bg-gray-100">
-  <div id="root"></div>
+<div id="root"></div>
 
-  <!-- App -->
-  <script type="text/babel">
-    const { useState, useEffect } = React;
+<script type="text/babel">
+const { useState } = React;
 
-    /* ---------- Storage Fallback ---------- */
-    if (!window.storage) {
-      window.storage = {
-        get: async (key) => {
-          const v = localStorage.getItem(key);
-          return v !== null ? { value: v } : null;
-        },
-        set: async (key, value) => {
-          localStorage.setItem(key, value);
-          return true;
-        }
-      };
-    }
+/* ================= CRYPTO ================= */
+function canonical(obj) {
+  return JSON.stringify(obj, Object.keys(obj).sort());
+}
 
-    /* ---------- App ---------- */
-    function MedicalCertificateSystem() {
-      const [view, setView] = useState("home");
-      const [currentCert, setCurrentCert] = useState(null);
-      const [verificationResult, setVerificationResult] = useState(null);
-      const [doctorProfile, setDoctorProfile] = useState(null);
-      const [loading, setLoading] = useState(true);
+async function sha256(text) {
+  const data = new TextEncoder().encode(text);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,"0")).join("");
+}
 
-      useEffect(() => {
-        (async () => {
-          const params = new URLSearchParams(window.location.search);
-          const verifyId = params.get("verify");
+/* ================= CONFIG ================= */
+const WORKER_URL = "https://your-worker-name.workers.dev";
 
-          if (verifyId) {
-            const r = await window.storage.get(`cert_${verifyId.toUpperCase()}`);
-            setVerificationResult(r ? JSON.parse(r.value) : null);
-            setView("verification");
-            setLoading(false);
-            return;
-          }
+/* ================= APP ================= */
+function App() {
+  const [doctor, setDoctor] = useState("");
+  const [cert, setCert] = useState(null);
+  const [status, setStatus] = useState("");
 
-          const saved = await window.storage.get("doctor_profile");
-          if (saved) setDoctorProfile(JSON.parse(saved.value));
-
-          setLoading(false);
-        })();
-      }, []);
-
-      const saveDoctorProfile = async (profile) => {
-        await window.storage.set("doctor_profile", JSON.stringify(profile));
-        setDoctorProfile(profile);
-      };
-
-      const generateId = () =>
-        "MC" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 7).toUpperCase();
-
-      const issueCertificate = async (data) => {
-        if (!doctorProfile) return alert("Save doctor profile first");
-
-        const cert = {
-          id: generateId(),
-          ...data,
-          issuedDate: new Date().toISOString(),
-          issuedBy: doctorProfile.doctorName,
-          clinicName: doctorProfile.clinicName,
-          licenseNo: doctorProfile.licenseNo,
-          status: "valid"
-        };
-
-        await window.storage.set(`cert_${cert.id}`, JSON.stringify(cert));
-        setCurrentCert(cert);
-        setView("issued");
-      };
-
-      if (loading) {
-        return (
-          <div className="min-h-screen flex items-center justify-center">
-            <div className="animate-spin h-12 w-12 border-b-2 border-blue-600 rounded-full"></div>
-          </div>
-        );
-      }
-
-      return (
-        <div className="max-w-2xl mx-auto p-4">
-          <Header doctor={doctorProfile} onLogout={() => setDoctorProfile(null)} />
-
-          {!doctorProfile && view === "home" && (
-            <DoctorLogin onSave={saveDoctorProfile} />
-          )}
-
-          {doctorProfile && view === "home" && (
-            <Home onNavigate={setView} />
-          )}
-
-          {view === "issue" && (
-            <IssueForm onSubmit={issueCertificate} onBack={() => setView("home")} />
-          )}
-
-          {view === "issued" && currentCert && (
-            <IssuedCertificate
-              cert={currentCert}
-              onBack={() => setView("home")}
-            />
-          )}
-
-          {view === "verification" && (
-            <VerificationResult
-              result={verificationResult}
-              onBack={() => setView("home")}
-            />
-          )}
-        </div>
-      );
-    }
-
-    /* ---------- Components ---------- */
-
-    const Header = ({ doctor, onLogout }) => (
-      <div className="bg-white shadow p-4 rounded flex justify-between">
-        <div>
-          <h1 className="font-semibold">Digital Medical Certificate</h1>
-          <p className="text-sm text-gray-500">Issue & verify</p>
-        </div>
-        {doctor && (
-          <button onClick={onLogout} className="text-red-500">Logout</button>
-        )}
-      </div>
-    );
-
-    const DoctorLogin = ({ onSave }) => {
-      const [doctorName, setDoctorName] = useState("");
-      const [clinicName, setClinicName] = useState("");
-      const [licenseNo, setLicenseNo] = useState("");
-
-      return (
-        <div className="bg-white p-6 mt-4 rounded shadow space-y-3">
-          <input className="w-full border p-2" placeholder="Doctor Name" onChange={e=>setDoctorName(e.target.value)} />
-          <input className="w-full border p-2" placeholder="Clinic Name" onChange={e=>setClinicName(e.target.value)} />
-          <input className="w-full border p-2" placeholder="License No" onChange={e=>setLicenseNo(e.target.value)} />
-          <button
-            className="bg-blue-600 text-white px-4 py-2 rounded"
-            onClick={() => onSave({ doctorName, clinicName, licenseNo })}
-          >
-            Save Profile
-          </button>
-        </div>
-      );
+  async function issue(patient) {
+    const unsigned = {
+      id: "MC" + Date.now().toString(36).toUpperCase(),
+      patient,
+      doctor,
+      issuedAt: new Date().toISOString()
     };
 
-    const Home = ({ onNavigate }) => (
-      <div className="bg-white p-6 mt-4 rounded shadow space-y-3">
-        <button className="w-full bg-indigo-600 text-white p-3 rounded" onClick={()=>onNavigate("issue")}>
-          Issue Certificate
-        </button>
-      </div>
-    );
+    const hash = await sha256(canonical(unsigned));
+    const certificate = { ...unsigned, hash };
 
-    const IssueForm = ({ onSubmit, onBack }) => {
-      const [patientName, setPatientName] = useState("");
+    setCert(certificate);
+    setStatus("Anchoring on blockchain...");
 
-      return (
-        <div className="bg-white p-6 mt-4 rounded shadow space-y-3">
-          <input className="w-full border p-2" placeholder="Patient Name" onChange={e=>setPatientName(e.target.value)} />
-          <button className="bg-blue-600 text-white px-4 py-2 rounded" onClick={()=>onSubmit({ patientName })}>
-            Issue
-          </button>
-          <button className="text-gray-500" onClick={onBack}>Back</button>
+    const res = await fetch(WORKER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hash: "0x" + hash })
+    });
+
+    const json = await res.json();
+    setStatus(json.success
+      ? "✔ Anchored on blockchain"
+      : "❌ Anchoring failed");
+  }
+
+  return (
+    <div className="max-w-md mx-auto p-4 space-y-4">
+      <h1 className="text-xl font-semibold">Medical Certificate</h1>
+
+      <input
+        className="border p-2 w-full"
+        placeholder="Doctor name"
+        onChange={e=>setDoctor(e.target.value)}
+      />
+
+      <button
+        className="bg-blue-600 text-white px-4 py-2 rounded"
+        onClick={()=>issue(prompt("Patient name"))}
+      >
+        Issue & Anchor
+      </button>
+
+      {cert && (
+        <div className="bg-white p-4 rounded shadow">
+          <p><b>ID:</b> {cert.id}</p>
+          <p><b>Hash:</b> {cert.hash}</p>
+          <p className="text-sm text-gray-500">{status}</p>
         </div>
-      );
-    };
+      )}
+    </div>
+  );
+}
 
-    const IssuedCertificate = ({ cert, onBack }) => (
-      <div className="bg-white p-6 mt-4 rounded shadow print-area">
-        <p><strong>ID:</strong> {cert.id}</p>
-        <p><strong>Patient:</strong> {cert.patientName}</p>
-        <button className="mt-4 text-blue-600" onClick={onBack}>Back</button>
-      </div>
-    );
-
-    const VerificationResult = ({ result, onBack }) => (
-      <div className="bg-white p-6 mt-4 rounded shadow">
-        {result ? (
-          <>
-            <p><strong>ID:</strong> {result.id}</p>
-            <p>Status: {result.status}</p>
-          </>
-        ) : (
-          <p>Certificate not found</p>
-        )}
-        <button className="mt-4 text-blue-600" onClick={onBack}>Back</button>
-      </div>
-    );
-
-    /* ---------- Mount ---------- */
-    ReactDOM
-      .createRoot(document.getElementById("root"))
-      .render(<MedicalCertificateSystem />);
-  </script>
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
 </body>
 </html>
