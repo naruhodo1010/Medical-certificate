@@ -1,443 +1,232 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Digital Medical Certificate System</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @media print {
-            body * { visibility: hidden; }
-            .print-area, .print-area * { visibility: visible; }
-            .print-area { position: absolute; left: 0; top: 0; width: 100%; }
-            .no-print { display: none !important; }
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Digital Medical Certificate System</title>
+
+  <!-- React -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <!-- Babel (for JSX) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    @media print {
+      body * { visibility: hidden; }
+      .print-area, .print-area * { visibility: visible; }
+      .print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+      }
+      .no-print { display: none !important; }
+    }
+  </style>
 </head>
-<body>
-    <div id="root"></div>
-    
-    <script type="text/babel">
-        const { useState, useEffect } = React;
-        
-        const MedicalCertificateSystem = () => {
-          const [view, setView] = useState('home');
-          const [currentCert, setCurrentCert] = useState(null);
-          const [verificationResult, setVerificationResult] = useState(null);
-          const [isAuthenticated, setIsAuthenticated] = useState(false);
-          const [doctorProfile, setDoctorProfile] = useState(null);
-          const [loading, setLoading] = useState(true);
+<body class="bg-gray-100">
+  <div id="root"></div>
 
-          useEffect(() => {
-            const initializeApp = async () => {
-              const urlParams = new URLSearchParams(window.location.search);
-              const verifyId = urlParams.get('verify');
-              
-              if (verifyId) {
-                try {
-                  const result = await window.storage.get(`cert_${verifyId.toUpperCase()}`, true);
-                  const cert = result ? JSON.parse(result.value) : null;
-                  setVerificationResult(cert);
-                  setView('verification');
-                  setLoading(false);
-                } catch (error) {
-                  setVerificationResult(null);
-                  setView('verification');
-                  setLoading(false);
-                }
-                return;
-              }
+  <!-- App -->
+  <script type="text/babel">
+    const { useState, useEffect } = React;
 
-              try {
-                const result = await window.storage.get('doctor_profile', false);
-                const savedProfile = result ? JSON.parse(result.value) : null;
-                if (savedProfile) {
-                  setDoctorProfile(savedProfile);
-                  setIsAuthenticated(true);
-                }
-              } catch (error) {
-                console.log('No saved profile');
-              }
-              
-              setLoading(false);
-            };
+    /* ---------- Storage Fallback ---------- */
+    if (!window.storage) {
+      window.storage = {
+        get: async (key) => {
+          const v = localStorage.getItem(key);
+          return v !== null ? { value: v } : null;
+        },
+        set: async (key, value) => {
+          localStorage.setItem(key, value);
+          return true;
+        }
+      };
+    }
 
-            initializeApp();
-          }, []);
+    /* ---------- App ---------- */
+    function MedicalCertificateSystem() {
+      const [view, setView] = useState("home");
+      const [currentCert, setCurrentCert] = useState(null);
+      const [verificationResult, setVerificationResult] = useState(null);
+      const [doctorProfile, setDoctorProfile] = useState(null);
+      const [loading, setLoading] = useState(true);
 
-          const loadDoctorProfile = async () => {
-            try {
-              const result = await window.storage.get('doctor_profile', false);
-              return result ? JSON.parse(result.value) : null;
-            } catch (error) {
-              return null;
-            }
-          };
+      useEffect(() => {
+        (async () => {
+          const params = new URLSearchParams(window.location.search);
+          const verifyId = params.get("verify");
 
-          const saveDoctorProfile = async (profile) => {
-            try {
-              await window.storage.set('doctor_profile', JSON.stringify(profile), false);
-              setDoctorProfile(profile);
-              setIsAuthenticated(true);
-            } catch (error) {
-              console.error('Failed to save profile:', error);
-            }
-          };
-
-          const generateId = () => {
-            const timestamp = Date.now().toString(36).toUpperCase();
-            const random = Math.random().toString(36).substr(2, 6).toUpperCase();
-            return `MC${timestamp}${random}`;
-          };
-
-          const issueCertificate = async (formData) => {
-            const profile = doctorProfile || (await loadDoctorProfile());
-            if (!profile) {
-              alert('Please save your doctor profile first.');
-              setView('home');
-              return;
-            }
-            const certId = generateId();
-            const certificate = {
-              id: certId,
-              ...formData,
-              issuedDate: new Date().toISOString(),
-              issuedBy: profile.doctorName,
-              clinicName: profile.clinicName,
-              licenseNo: profile.licenseNo,
-              status: 'valid'
-            };
-            
-            try {
-              await window.storage.set(`cert_${certId}`, JSON.stringify(certificate), true);
-              
-              const doctorCerts = await loadDoctorCertificates();
-              doctorCerts.push(certId);
-              await window.storage.set('my_certificates', JSON.stringify(doctorCerts), false);
-              
-              setCurrentCert(certificate);
-              setView('issued');
-            } catch (error) {
-              alert('Failed to issue certificate. Please try again.');
-              console.error('Issue error:', error);
-            }
-          };
-
-          const loadDoctorCertificates = async () => {
-            try {
-              const result = await window.storage.get('my_certificates', false);
-              return result ? JSON.parse(result.value) : [];
-            } catch (error) {
-              return [];
-            }
-          };
-
-          const verifyCertificate = async (certId) => {
-            try {
-              const result = await window.storage.get(`cert_${certId.toUpperCase()}`, true);
-              const cert = result ? JSON.parse(result.value) : null;
-              setVerificationResult(cert);
-              setView('verification');
-            } catch (error) {
-              setVerificationResult(null);
-              setView('verification');
-            }
-          };
-
-          const getVerificationUrl = (certId) => {
-            return `${window.location.origin}${window.location.pathname}?verify=${certId}`;
-          };
-
-          const handleLogout = async () => {
-            if (confirm('Are you sure you want to logout?')) {
-              setIsAuthenticated(false);
-              setDoctorProfile(null);
-              setView('home');
-            }
-          };
-
-          if (loading) {
-            return (
-              <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                  <p className="mt-4 text-gray-600">Loading...</p>
-                </div>
-              </div>
-            );
+          if (verifyId) {
+            const r = await window.storage.get(`cert_${verifyId.toUpperCase()}`);
+            setVerificationResult(r ? JSON.parse(r.value) : null);
+            setView("verification");
+            setLoading(false);
+            return;
           }
 
-          return (
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-              <div className="max-w-2xl mx-auto p-4">
-                <Header isAuthenticated={isAuthenticated} doctorProfile={doctorProfile} onLogout={handleLogout} />
+          const saved = await window.storage.get("doctor_profile");
+          if (saved) setDoctorProfile(JSON.parse(saved.value));
 
-                <div className="mt-6">
-                {!isAuthenticated && view === 'home' ? (
-                  <DoctorLogin onLogin={saveDoctorProfile} />
-                ) : (
-                  <>
-                    {view === 'home' && <HomeView onNavigate={setView} />}
-                    {view === 'issue' && <IssueForm onSubmit={issueCertificate} onBack={() => setView('home')} />}
-                    {view === 'issued' && currentCert && (
-                      <IssuedCertificate cert={currentCert} verificationUrl={getVerificationUrl(currentCert.id)} onBack={() => setView('home')} />
-                    )}
-                    {view === 'verify' && <VerifyForm onVerify={verifyCertificate} onBack={() => setView('home')} />}
-                    {view === 'verification' && <VerificationResult result={verificationResult} onBack={() => setView('home')} />}
-                  </>
-                )}
-                </div>
-              </div>
-            </div>
-          );
+          setLoading(false);
+        })();
+      }, []);
+
+      const saveDoctorProfile = async (profile) => {
+        await window.storage.set("doctor_profile", JSON.stringify(profile));
+        setDoctorProfile(profile);
+      };
+
+      const generateId = () =>
+        "MC" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 7).toUpperCase();
+
+      const issueCertificate = async (data) => {
+        if (!doctorProfile) return alert("Save doctor profile first");
+
+        const cert = {
+          id: generateId(),
+          ...data,
+          issuedDate: new Date().toISOString(),
+          issuedBy: doctorProfile.doctorName,
+          clinicName: doctorProfile.clinicName,
+          licenseNo: doctorProfile.licenseNo,
+          status: "valid"
         };
 
-        /* ---------- Components ---------- */
+        await window.storage.set(`cert_${cert.id}`, JSON.stringify(cert));
+        setCurrentCert(cert);
+        setView("issued");
+      };
 
-        const Header = ({ isAuthenticated, doctorProfile, onLogout }) => {
-          return (
-            <div className="flex items-center justify-between bg-white shadow rounded p-4">
-              <div>
-                <h1 className="text-xl font-semibold text-gray-800">Digital Medical Certificate</h1>
-                <p className="text-sm text-gray-500">Issue and verify certificates</p>
-              </div>
-              <div className="text-right">
-                {isAuthenticated && doctorProfile ? (
-                  <>
-                    <div className="text-sm text-gray-700">{doctorProfile.doctorName}</div>
-                    <div className="mt-2">
-                      <button className="px-3 py-1 bg-red-500 text-white rounded" onClick={onLogout}>Logout</button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-sm text-gray-500">Not signed in</div>
-                )}
-              </div>
-            </div>
-          );
-        };
-
-        const DoctorLogin = ({ onLogin }) => {
-          const [doctorName, setDoctorName] = useState('');
-          const [clinicName, setClinicName] = useState('');
-          const [licenseNo, setLicenseNo] = useState('');
-
-          const handleSave = () => {
-            if (!doctorName.trim()) {
-              alert('Please enter doctor name');
-              return;
-            }
-            onLogin({ doctorName, clinicName, licenseNo });
-          };
-
-          return (
-            <div className="bg-white p-6 rounded shadow">
-              <h2 className="text-lg font-medium mb-4">Doctor Profile</h2>
-              <div className="space-y-3">
-                <input className="w-full border rounded px-3 py-2" placeholder="Doctor name" value={doctorName} onChange={e => setDoctorName(e.target.value)} />
-                <input className="w-full border rounded px-3 py-2" placeholder="Clinic name" value={clinicName} onChange={e => setClinicName(e.target.value)} />
-                <input className="w-full border rounded px-3 py-2" placeholder="License number" value={licenseNo} onChange={e => setLicenseNo(e.target.value)} />
-                <div className="flex justify-end">
-                  <button className="px-4 py-2 bg-blue-600 text-white rounded" onClick={handleSave}>Save</button>
-                </div>
-              </div>
-            </div>
-          );
-        };
-
-        const HomeView = ({ onNavigate }) => {
-          return (
-            <div className="bg-white p-6 rounded shadow space-y-4">
-              <h2 className="text-lg font-medium">Home</h2>
-              <div className="space-y-2">
-                <button className="w-full text-left px-4 py-3 bg-indigo-600 text-white rounded" onClick={() => onNavigate('issue')}>Issue New Certificate</button>
-                <button className="w-full text-left px-4 py-3 bg-green-600 text-white rounded" onClick={() => onNavigate('verify')}>Verify a Certificate</button>
-              </div>
-            </div>
-          );
-        };
-
-        const IssueForm = ({ onSubmit, onBack }) => {
-          const [patientName, setPatientName] = useState('');
-          const [patientId, setPatientId] = useState('');
-          const [diagnosis, setDiagnosis] = useState('');
-          const [notes, setNotes] = useState('');
-          const [daysOff, setDaysOff] = useState(0);
-
-          const handleSubmit = () => {
-            if (!patientName.trim()) {
-              alert('Enter patient name');
-              return;
-            }
-            onSubmit({ patientName, patientId, diagnosis, notes, daysOff });
-          };
-
-          return (
-            <div className="bg-white p-6 rounded shadow">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-medium">Issue Certificate</h2>
-                <button className="text-sm text-gray-500" onClick={onBack}>Back</button>
-              </div>
-
-              <div className="space-y-3">
-                <input className="w-full border rounded px-3 py-2" placeholder="Patient name" value={patientName} onChange={e => setPatientName(e.target.value)} />
-                <input className="w-full border rounded px-3 py-2" placeholder="Patient ID (optional)" value={patientId} onChange={e => setPatientId(e.target.value)} />
-                <input className="w-full border rounded px-3 py-2" placeholder="Diagnosis" value={diagnosis} onChange={e => setDiagnosis(e.target.value)} />
-                <input className="w-full border rounded px-3 py-2" type="number" placeholder="Days off" value={daysOff} onChange={e => setDaysOff(parseInt(e.target.value || 0))} />
-                <textarea className="w-full border rounded px-3 py-2" rows="4" placeholder="Notes" value={notes} onChange={e => setNotes(e.target.value)}></textarea>
-
-                <div className="flex justify-between">
-                  <button className="px-4 py-2 bg-gray-200 rounded" onClick={onBack}>Cancel</button>
-                  <button className="px-4 py-2 bg-blue-600 text-white rounded" onClick={handleSubmit}>Issue</button>
-                </div>
-              </div>
-            </div>
-          );
-        };
-
-        const IssuedCertificate = ({ cert, verificationUrl, onBack }) => {
-          const handlePrint = () => {
-            window.print();
-          };
-
-          const copyUrl = async () => {
-            try {
-              await navigator.clipboard.writeText(verificationUrl);
-              alert('Verification URL copied to clipboard');
-            } catch (e) {
-              alert('Copy failed — please copy manually:
-' + verificationUrl);
-            }
-          };
-
-          return (
-            <div className="bg-white p-6 rounded shadow print-area">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-medium">Certificate Issued</h2>
-                <button className="text-sm text-gray-500" onClick={onBack}>Close</button>
-              </div>
-
-              <div className="border rounded p-4 bg-gray-50">
-                <div className="text-sm text-gray-600">Certificate ID: <strong>{cert.id}</strong></div>
-                <div className="mt-2"><strong>Patient:</strong> {cert.patientName} {cert.patientId ? `({cert.patientId})` : ''}</div>
-                <div className="mt-1"><strong>Diagnosis:</strong> {cert.diagnosis}</div>
-                <div className="mt-1"><strong>Days off:</strong> {cert.daysOff}</div>
-                <div className="mt-2"><strong>Issued by:</strong> {cert.issuedBy} — {cert.clinicName} (License: {cert.licenseNo})</div>
-                <div className="mt-1 text-sm text-gray-500">Issued at: {new Date(cert.issuedDate).toLocaleString()}</div>
-                <div className="mt-3"><strong>Notes:</strong><div className="mt-1 whitespace-pre-wrap">{cert.notes}</div></div>
-              </div>
-
-              <div className="mt-4 flex space-x-2 no-print">
-                <button className="px-4 py-2 bg-blue-600 text-white rounded" onClick={handlePrint}>Print</button>
-                <button className="px-4 py-2 bg-green-600 text-white rounded" onClick={copyUrl}>Copy Verification Link</button>
-              </div>
-            </div>
-          );
-        };
-
-        const VerifyForm = ({ onVerify, onBack }) => {
-          const [certId, setCertId] = useState('');
-
-          const submit = () => {
-            if (!certId.trim()) {
-              alert('Enter certificate ID');
-              return;
-            }
-            onVerify(certId.trim());
-          };
-
-          return (
-            <div className="bg-white p-6 rounded shadow">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-medium">Verify Certificate</h2>
-                <button className="text-sm text-gray-500" onClick={onBack}>Back</button>
-              </div>
-              <div className="space-y-3">
-                <input className="w-full border rounded px-3 py-2" placeholder="Certificate ID (e.g. MC...)" value={certId} onChange={e => setCertId(e.target.value)} />
-                <div className="flex justify-end">
-                  <button className="px-4 py-2 bg-indigo-600 text-white rounded" onClick={submit}>Verify</button>
-                </div>
-              </div>
-            </div>
-          );
-        };
-
-        const VerificationResult = ({ result, onBack }) => {
-          return (
-            <div className="bg-white p-6 rounded shadow">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-medium">Verification Result</h2>
-                <button className="text-sm text-gray-500" onClick={onBack}>Back</button>
-              </div>
-
-              {result ? (
-                <div className="border rounded p-4 bg-gray-50">
-                  <div className="text-sm text-gray-600">Certificate ID: <strong>{result.id}</strong></div>
-                  <div className="mt-2"><strong>Patient:</strong> {result.patientName} {result.patientId ? `({result.patientId})` : ''}</div>
-                  <div className="mt-1"><strong>Diagnosis:</strong> {result.diagnosis}</div>
-                  <div className="mt-1"><strong>Days off:</strong> {result.daysOff}</div>
-                  <div className="mt-2"><strong>Issued by:</strong> {result.issuedBy} — {result.clinicName} (License: {result.licenseNo})</div>
-                  <div className="mt-1 text-sm text-gray-500">Issued at: {new Date(result.issuedDate).toLocaleString()}</div>
-                  <div className="mt-3"><strong>Notes:</strong><div className="mt-1 whitespace-pre-wrap">{result.notes}</div></div>
-                  <div className="mt-3 text-green-700 font-semibold">Status: {result.status}</div>
-                </div>
-              ) : (
-                <div className="text-center text-gray-600 p-6">
-                  <p className="mb-3">Certificate not found or invalid ID.</p>
-                </div>
-              )}
-            </div>
-          );
-        };
-        </script>
-
-    <!-- Storage fallback for environments where `window.storage` is not provided and mount -->
-    <script>
-      if (!window.storage) {
-        window.storage = {
-          get: async (key, raw = false) => {
-            try {
-              const v = localStorage.getItem(key);
-              return v !== null ? { value: v } : null;
-            } catch (e) {
-              console.warn('localStorage.getItem failed', e);
-              return null;
-            }
-          },
-          set: async (key, value, raw = false) => {
-            try {
-              localStorage.setItem(key, value);
-              return true;
-            } catch (e) {
-              console.warn('localStorage.setItem failed', e);
-              return false;
-            }
-          }
-        };
-        console.info('window.storage fallback active: using localStorage');
+      if (loading) {
+        return (
+          <div className="min-h-screen flex items-center justify-center">
+            <div className="animate-spin h-12 w-12 border-b-2 border-blue-600 rounded-full"></div>
+          </div>
+        );
       }
 
-      (function mountApp() {
-        const rootEl = document.getElementById('root');
-        if (!rootEl) {
-          console.error('#root element not found — cannot mount React app');
-          return;
-        }
-        try {
-          if (ReactDOM && typeof ReactDOM.createRoot === 'function') {
-            ReactDOM.createRoot(rootEl).render(React.createElement(MedicalCertificateSystem));
-          } else if (ReactDOM && typeof ReactDOM.render === 'function') {
-            ReactDOM.render(React.createElement(MedicalCertificateSystem), rootEl);
-          } else {
-            console.error('No compatible ReactDOM found to mount the app.');
-          }
-        } catch (err) {
-          console.error('Error mounting app:', err);
-        }
-      })();
-    </script>
+      return (
+        <div className="max-w-2xl mx-auto p-4">
+          <Header doctor={doctorProfile} onLogout={() => setDoctorProfile(null)} />
+
+          {!doctorProfile && view === "home" && (
+            <DoctorLogin onSave={saveDoctorProfile} />
+          )}
+
+          {doctorProfile && view === "home" && (
+            <Home onNavigate={setView} />
+          )}
+
+          {view === "issue" && (
+            <IssueForm onSubmit={issueCertificate} onBack={() => setView("home")} />
+          )}
+
+          {view === "issued" && currentCert && (
+            <IssuedCertificate
+              cert={currentCert}
+              onBack={() => setView("home")}
+            />
+          )}
+
+          {view === "verification" && (
+            <VerificationResult
+              result={verificationResult}
+              onBack={() => setView("home")}
+            />
+          )}
+        </div>
+      );
+    }
+
+    /* ---------- Components ---------- */
+
+    const Header = ({ doctor, onLogout }) => (
+      <div className="bg-white shadow p-4 rounded flex justify-between">
+        <div>
+          <h1 className="font-semibold">Digital Medical Certificate</h1>
+          <p className="text-sm text-gray-500">Issue & verify</p>
+        </div>
+        {doctor && (
+          <button onClick={onLogout} className="text-red-500">Logout</button>
+        )}
+      </div>
+    );
+
+    const DoctorLogin = ({ onSave }) => {
+      const [doctorName, setDoctorName] = useState("");
+      const [clinicName, setClinicName] = useState("");
+      const [licenseNo, setLicenseNo] = useState("");
+
+      return (
+        <div className="bg-white p-6 mt-4 rounded shadow space-y-3">
+          <input className="w-full border p-2" placeholder="Doctor Name" onChange={e=>setDoctorName(e.target.value)} />
+          <input className="w-full border p-2" placeholder="Clinic Name" onChange={e=>setClinicName(e.target.value)} />
+          <input className="w-full border p-2" placeholder="License No" onChange={e=>setLicenseNo(e.target.value)} />
+          <button
+            className="bg-blue-600 text-white px-4 py-2 rounded"
+            onClick={() => onSave({ doctorName, clinicName, licenseNo })}
+          >
+            Save Profile
+          </button>
+        </div>
+      );
+    };
+
+    const Home = ({ onNavigate }) => (
+      <div className="bg-white p-6 mt-4 rounded shadow space-y-3">
+        <button className="w-full bg-indigo-600 text-white p-3 rounded" onClick={()=>onNavigate("issue")}>
+          Issue Certificate
+        </button>
+      </div>
+    );
+
+    const IssueForm = ({ onSubmit, onBack }) => {
+      const [patientName, setPatientName] = useState("");
+
+      return (
+        <div className="bg-white p-6 mt-4 rounded shadow space-y-3">
+          <input className="w-full border p-2" placeholder="Patient Name" onChange={e=>setPatientName(e.target.value)} />
+          <button className="bg-blue-600 text-white px-4 py-2 rounded" onClick={()=>onSubmit({ patientName })}>
+            Issue
+          </button>
+          <button className="text-gray-500" onClick={onBack}>Back</button>
+        </div>
+      );
+    };
+
+    const IssuedCertificate = ({ cert, onBack }) => (
+      <div className="bg-white p-6 mt-4 rounded shadow print-area">
+        <p><strong>ID:</strong> {cert.id}</p>
+        <p><strong>Patient:</strong> {cert.patientName}</p>
+        <button className="mt-4 text-blue-600" onClick={onBack}>Back</button>
+      </div>
+    );
+
+    const VerificationResult = ({ result, onBack }) => (
+      <div className="bg-white p-6 mt-4 rounded shadow">
+        {result ? (
+          <>
+            <p><strong>ID:</strong> {result.id}</p>
+            <p>Status: {result.status}</p>
+          </>
+        ) : (
+          <p>Certificate not found</p>
+        )}
+        <button className="mt-4 text-blue-600" onClick={onBack}>Back</button>
+      </div>
+    );
+
+    /* ---------- Mount ---------- */
+    ReactDOM
+      .createRoot(document.getElementById("root"))
+      .render(<MedicalCertificateSystem />);
+  </script>
 </body>
 </html>
