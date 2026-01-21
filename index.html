@@ -308,7 +308,8 @@
               await navigator.clipboard.writeText(verificationUrl);
               alert('Verification URL copied to clipboard');
             } catch (e) {
-              alert('Copy failed — please copy manually:\n' + verificationUrl);
+              alert('Copy failed — please copy manually:
+' + verificationUrl);
             }
           };
 
@@ -321,7 +322,7 @@
 
               <div className="border rounded p-4 bg-gray-50">
                 <div className="text-sm text-gray-600">Certificate ID: <strong>{cert.id}</strong></div>
-                <div className="mt-2"><strong>Patient:</strong> {cert.patientName} {cert.patientId ? `(${cert.patientId})` : ''}</div>
+                <div className="mt-2"><strong>Patient:</strong> {cert.patientName} {cert.patientId ? `({cert.patientId})` : ''}</div>
                 <div className="mt-1"><strong>Diagnosis:</strong> {cert.diagnosis}</div>
                 <div className="mt-1"><strong>Days off:</strong> {cert.daysOff}</div>
                 <div className="mt-2"><strong>Issued by:</strong> {cert.issuedBy} — {cert.clinicName} (License: {cert.licenseNo})</div>
@@ -375,7 +376,7 @@
               {result ? (
                 <div className="border rounded p-4 bg-gray-50">
                   <div className="text-sm text-gray-600">Certificate ID: <strong>{result.id}</strong></div>
-                  <div className="mt-2"><strong>Patient:</strong> {result.patientName} {result.patientId ? `(${result.patientId})` : ''}</div>
+                  <div className="mt-2"><strong>Patient:</strong> {result.patientName} {result.patientId ? `({result.patientId})` : ''}</div>
                   <div className="mt-1"><strong>Diagnosis:</strong> {result.diagnosis}</div>
                   <div className="mt-1"><strong>Days off:</strong> {result.daysOff}</div>
                   <div className="mt-2"><strong>Issued by:</strong> {result.issuedBy} — {result.clinicName} (License: {result.licenseNo})</div>
@@ -391,7 +392,7 @@
             </div>
           );
         };
-    </script>
+        </script>
 
     <!-- Storage fallback for environments where `window.storage` is not provided and mount -->
     <script>
